@@ -1,0 +1,15 @@
+{
+  "model_name": "text-embedding-3-small",
+  "embedding_dimension": 1536,
+  "total_vectors": 409,
+  "total_documents": 286,
+  "vector_store_path": "processed_rules\\vector_store",
+  "created_from_chunks": 286,
+  "sources": {
+    "learn_to_play_chunks": 182,
+    "rulebook_chunks": 104
+  },
+  "faction_documents_added": 123,
+  "factions_included": true,
+  "last_faction_update": "D:\\Twilight_imperium\\processed_rules\\faction_data_improved.json"
+}
