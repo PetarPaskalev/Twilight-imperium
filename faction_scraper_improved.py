@@ -1,8 +1,14 @@
 """
 Improved Twilight Imperium Faction Data Scraper
-Enhanced version with better HTML parsing and section detection
+Enhanced version with support for all faction sets and organized folder structure
 
-This version includes better debugging and more robust section extraction
+This version supports:
+- Base game factions (17)
+- Prophecy of Kings expansion factions (7) 
+- Codex factions (1)
+- All factions combined (25)
+
+Features better debugging and more robust section extraction
 for the complex Fandom wiki structure.
 """
 
@@ -28,13 +34,23 @@ load_dotenv()
 class ImprovedTwilightFactionScraper:
     """
     Improved scraper for Twilight Imperium faction data from Fandom wiki
+    Supports all faction sets: base game, Prophecy of Kings, and Codex
     """
     
-    def __init__(self, debug_mode: bool = True):
-        """Initialize the improved faction scraper"""
+    def __init__(self, debug_mode: bool = True, faction_set: str = "all"):
+        """
+        Initialize the improved faction scraper
+        
+        Args:
+            debug_mode: Enable debug output and limit to 2 factions for testing
+            faction_set: Which factions to scrape ("base", "pok", "codex", "all")
+        """
         self.debug_mode = debug_mode
+        self.faction_set = faction_set
         self.base_url = "https://twilight-imperium.fandom.com/wiki/"
-        self.factions = [
+        
+        # Base game factions (original 17)
+        self.base_factions = [
             "The Arborec",
             "The Barony of Letnev", 
             "The Clan of Saar",
@@ -54,6 +70,38 @@ class ImprovedTwilightFactionScraper:
             "The Yssaril Tribes"
         ]
         
+        # Prophecy of Kings expansion factions (7)
+        self.pok_factions = [
+            "The Argent Flight",
+            "The Empyrean",
+            "The Mahact Gene-Sorcerers",
+            "The Naaz-Rokha Alliance",
+            "The Nomad",
+            "The Titans of Ul",
+            "The Vuil'Raith Cabal"
+        ]
+        
+        # Codex factions (1)
+        self.codex_factions = [
+            "The Council Keleres"
+        ]
+        
+        # Select which factions to scrape
+        if faction_set == "base":
+            self.factions = self.base_factions
+            self.set_description = "Base Game"
+        elif faction_set == "pok":
+            self.factions = self.pok_factions
+            self.set_description = "Prophecy of Kings"
+        elif faction_set == "codex":
+            self.factions = self.codex_factions
+            self.set_description = "Codex"
+        elif faction_set == "all":
+            self.factions = self.base_factions + self.pok_factions + self.codex_factions
+            self.set_description = "All Factions"
+        else:
+            raise ValueError(f"Invalid faction_set: {faction_set}. Use 'base', 'pok', 'codex', or 'all'")
+        
         # More flexible section patterns to catch variations
         self.section_patterns = {
             "Faction Abilities": ["Faction Abilities", "Abilities", "Special Abilities"],
@@ -66,7 +114,20 @@ class ImprovedTwilightFactionScraper:
             "Faction Promissory Note": ["Faction Promissory Note", "Promissory Note", "Promissory"]
         }
         
+        # Create organized folder structure
         self.processed_rules_dir = Path("processed_rules")
+        self.faction_data_dir = self.processed_rules_dir / "faction_data"
+        self.faction_data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create subfolders for different faction sets
+        self.base_dir = self.faction_data_dir / "base_game"
+        self.pok_dir = self.faction_data_dir / "prophecy_of_kings"
+        self.codex_dir = self.faction_data_dir / "codex"
+        self.combined_dir = self.faction_data_dir / "combined"
+        
+        for dir_path in [self.base_dir, self.pok_dir, self.codex_dir, self.combined_dir]:
+            dir_path.mkdir(exist_ok=True)
+        
         self.faction_data = []
         
         # Better headers to avoid blocking
@@ -79,10 +140,32 @@ class ImprovedTwilightFactionScraper:
             'Upgrade-Insecure-Requests': '1',
         }
         
-        print(f"✅ Improved faction scraper initialized for {len(self.factions)} factions")
+        print(f"✅ Improved faction scraper initialized")
+        print(f"📦 Faction Set: {self.set_description} ({len(self.factions)} factions)")
+        print(f"📁 Data will be saved to: {self.faction_data_dir}")
         if debug_mode:
             print("🐛 Debug mode enabled - will show detailed extraction info")
     
+    def _get_output_filename(self) -> str:
+        """Get the appropriate output filename based on faction set"""
+        filename_map = {
+            "base": "base_game_factions.json",
+            "pok": "prophecy_of_kings_factions.json", 
+            "codex": "codex_factions.json",
+            "all": "all_factions_combined.json"
+        }
+        return filename_map.get(self.faction_set, "faction_data.json")
+    
+    def _get_output_directory(self) -> Path:
+        """Get the appropriate output directory based on faction set"""
+        dir_map = {
+            "base": self.base_dir,
+            "pok": self.pok_dir,
+            "codex": self.codex_dir,
+            "all": self.combined_dir
+        }
+        return dir_map.get(self.faction_set, self.faction_data_dir)
+
     def _generate_faction_url(self, faction_name: str) -> str:
         """Generate the correct Fandom wiki URL for a faction"""
         url_name = faction_name.replace(" ", "_")
@@ -335,27 +418,72 @@ class ImprovedTwilightFactionScraper:
         self.faction_data = all_faction_data
         return all_faction_data
     
-    def save_faction_data(self, filename: str = "faction_data_improved.json"):
-        """Save scraped faction data to file"""
+    def save_faction_data(self, custom_filename: str = None):
+        """Save scraped faction data to organized folders"""
         if not self.faction_data:
             print("❌ No faction data to save")
             return
         
-        self.processed_rules_dir.mkdir(exist_ok=True)
-        faction_file = self.processed_rules_dir / filename
+        output_dir = self._get_output_directory()
+        output_filename = custom_filename or self._get_output_filename()
         
-        with open(faction_file, 'w', encoding='utf-8') as f:
+        output_file = output_dir / output_filename
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(self.faction_data, f, indent=2, ensure_ascii=False)
         
-        print(f"💾 Faction data saved to: {faction_file}")
+        print(f"💾 {self.set_description} faction data saved to: {output_file}")
+        
+        # Also save a copy to the main processed_rules directory for backward compatibility
+        if self.faction_set == "all":
+            legacy_file = self.processed_rules_dir / "faction_data_improved.json"
+            with open(legacy_file, 'w', encoding='utf-8') as f:
+                json.dump(self.faction_data, f, indent=2, ensure_ascii=False)
+            print(f"💾 Legacy copy saved to: {legacy_file}")
+    
+    def create_summary_report(self):
+        """Create a summary report of all scraped factions"""
+        if not self.faction_data:
+            return
+        
+        successful = [f for f in self.faction_data if f.get("scraped_successfully", False)]
+        failed = [f for f in self.faction_data if not f.get("scraped_successfully", False)]
+        
+        # Count sections by type
+        section_stats = {}
+        for faction in successful:
+            for section_name in faction.get("sections", {}).keys():
+                section_stats[section_name] = section_stats.get(section_name, 0) + 1
+        
+        report = {
+            "faction_set": self.faction_set,
+            "set_description": self.set_description,
+            "total_factions": len(self.faction_data),
+            "successful_scrapes": len(successful),
+            "failed_scrapes": len(failed),
+            "success_rate": f"{(len(successful)/len(self.faction_data)*100):.1f}%" if self.faction_data else "0%",
+            "section_statistics": section_stats,
+            "successful_factions": [f["name"] for f in successful],
+            "failed_factions": [f["name"] for f in failed]
+        }
+        
+        # Save report
+        output_dir = self._get_output_directory()
+        report_file = output_dir / f"{self.faction_set}_scraping_report.json"
+        
+        with open(report_file, 'w', encoding='utf-8') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+        
+        print(f"📊 Scraping report saved to: {report_file}")
+        return report
 
 
-def test_single_faction(faction_name: str = "The Arborec"):
+def test_single_faction(faction_name: str = "The Arborec", faction_set: str = "base"):
     """Test scraping a single faction for debugging"""
     print(f"🧪 Testing scraping for: {faction_name}")
     print("=" * 50)
     
-    scraper = ImprovedTwilightFactionScraper(debug_mode=True)
+    scraper = ImprovedTwilightFactionScraper(debug_mode=True, faction_set=faction_set)
     faction_data = scraper.scrape_faction(faction_name)
     
     print(f"\n📋 Results for {faction_name}:")
@@ -367,15 +495,83 @@ def test_single_faction(faction_name: str = "The Arborec"):
         print(f"    Length: {len(content)} characters")
         print(f"    Preview: {content[:200]}...")
 
+def test_faction_set(faction_set: str):
+    """Test scraping for a specific faction set"""
+    print(f"🧪 Testing {faction_set} faction set")
+    print("=" * 60)
+    
+    scraper = ImprovedTwilightFactionScraper(debug_mode=True, faction_set=faction_set)
+    
+    # Test first faction from the set
+    if scraper.factions:
+        test_faction = scraper.factions[0]
+        print(f"Testing with: {test_faction}")
+        faction_data = scraper.scrape_faction(test_faction)
+        
+        print(f"\n📋 Test Results:")
+        print(f"  Faction: {test_faction}")
+        print(f"  Success: {faction_data['scraped_successfully']}")
+        print(f"  Sections found: {len(faction_data['sections'])}")
+        print(f"  URL tested: {faction_data['url']}")
+        
+        if faction_data['sections']:
+            print(f"\n  📄 Sections extracted:")
+            for section in faction_data['sections'].keys():
+                print(f"    ✅ {section}")
+        else:
+            print("  ❌ No sections extracted")
+    
+    return scraper
+
 
 if __name__ == "__main__":
     import sys
     
-    if len(sys.argv) > 1 and sys.argv[1] == "test":
-        # Test mode - single faction
+    print("🚀 Twilight Imperium Enhanced Faction Scraper")
+    print("=" * 60)
+    
+    if len(sys.argv) < 2:
+        print("Usage examples:")
+        print("  python faction_scraper_improved.py base          # Scrape base game factions")
+        print("  python faction_scraper_improved.py pok           # Scrape Prophecy of Kings factions")
+        print("  python faction_scraper_improved.py codex         # Scrape Codex factions")
+        print("  python faction_scraper_improved.py all           # Scrape all 25 factions")
+        print("  python faction_scraper_improved.py test-base     # Test base game faction")
+        print("  python faction_scraper_improved.py test-pok      # Test PoK faction")
+        print("  python faction_scraper_improved.py test-codex    # Test Codex faction")
+        sys.exit(1)
+    
+    command = sys.argv[1].lower()
+    
+    # Test modes
+    if command == "test-base":
+        test_faction_set("base")
+    elif command == "test-pok":
+        test_faction_set("pok")
+    elif command == "test-codex":
+        test_faction_set("codex")
+    elif command == "test":
+        # Legacy test mode
         test_single_faction()
-    else:
-        # Full scraping
-        scraper = ImprovedTwilightFactionScraper(debug_mode=False)
+    
+    # Production scraping modes
+    elif command in ["base", "pok", "codex", "all"]:
+        print(f"🎯 Starting {command} faction scraping...")
+        
+        # Choose debug mode based on faction set
+        debug_mode = (command in ["codex"]) or (len(sys.argv) > 2 and sys.argv[2] == "debug")
+        
+        scraper = ImprovedTwilightFactionScraper(debug_mode=debug_mode, faction_set=command)
+        
+        # Run the scraping
         scraper.scrape_all_factions()
-        scraper.save_faction_data() 
+        scraper.save_faction_data()
+        scraper.create_summary_report()
+        
+        print(f"\n🎉 {scraper.set_description} scraping complete!")
+        print(f"📁 Check the {scraper._get_output_directory()} folder for results")
+    
+    else:
+        print(f"❌ Unknown command: {command}")
+        print("Valid commands: base, pok, codex, all, test-base, test-pok, test-codex")
+        sys.exit(1) 

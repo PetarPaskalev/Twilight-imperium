@@ -24,20 +24,85 @@ load_dotenv()
 class FactionDataIntegrator:
     """
     Integrates faction data with existing vector store
+    Supports organized folder structure with multiple faction sets
     """
     
-    def __init__(self):
-        """Initialize the faction data integrator"""
+    def __init__(self, faction_set: str = "all"):
+        """
+        Initialize the faction data integrator
+        
+        Args:
+            faction_set: Which faction data to integrate ("base", "pok", "codex", "all")
+        """
+        self.faction_set = faction_set
         self.processed_rules_dir = Path("processed_rules")
         self.vector_store_path = self.processed_rules_dir / "vector_store"
-        self.faction_data_file = self.processed_rules_dir / "faction_data_improved.json"
+        
+        # Set up faction data paths
+        self.faction_data_dir = self.processed_rules_dir / "faction_data"
+        self.faction_data_files = self._get_faction_data_files()
         
         # Initialize embeddings model
         self.embeddings_model = None
         self.vector_store = None
         self.faction_data = []
         
-        print("🔥 Faction Data Integrator initialized")
+        print("🔥 Enhanced Faction Data Integrator initialized")
+        print(f"📦 Target faction set: {faction_set}")
+        print(f"📁 Data source: {self.faction_data_dir}")
+    
+    def _get_faction_data_files(self) -> List[Path]:
+        """Get the faction data files to process based on faction_set"""
+        files = []
+        
+        if self.faction_set == "base":
+            base_file = self.faction_data_dir / "base_game" / "base_game_factions.json"
+            if base_file.exists():
+                files.append(base_file)
+        
+        elif self.faction_set == "pok":
+            pok_file = self.faction_data_dir / "prophecy_of_kings" / "prophecy_of_kings_factions.json"
+            if pok_file.exists():
+                files.append(pok_file)
+        
+        elif self.faction_set == "codex":
+            codex_file = self.faction_data_dir / "codex" / "codex_factions.json"
+            if codex_file.exists():
+                files.append(codex_file)
+        
+        elif self.faction_set == "all":
+            # Try organized files first
+            combined_file = self.faction_data_dir / "combined" / "all_factions_combined.json"
+            if combined_file.exists():
+                files.append(combined_file)
+            else:
+                # Fall back to individual files
+                for sub_set in ["base", "pok", "codex"]:
+                    sub_files = self._get_faction_data_files_for_set(sub_set)
+                    files.extend(sub_files)
+            
+            # Also check for legacy file
+            legacy_file = self.processed_rules_dir / "faction_data_improved.json"
+            if legacy_file.exists() and not files:
+                files.append(legacy_file)
+        
+        else:
+            raise ValueError(f"Invalid faction_set: {self.faction_set}. Use 'base', 'pok', 'codex', or 'all'")
+        
+        return files
+    
+    def _get_faction_data_files_for_set(self, faction_set: str) -> List[Path]:
+        """Helper to get files for a specific faction set"""
+        file_map = {
+            "base": self.faction_data_dir / "base_game" / "base_game_factions.json",
+            "pok": self.faction_data_dir / "prophecy_of_kings" / "prophecy_of_kings_factions.json",
+            "codex": self.faction_data_dir / "codex" / "codex_factions.json"
+        }
+        
+        file_path = file_map.get(faction_set)
+        if file_path and file_path.exists():
+            return [file_path]
+        return []
     
     def _initialize_embeddings(self):
         """Initialize the OpenAI embeddings model"""
@@ -56,21 +121,54 @@ class FactionDataIntegrator:
         print("✅ OpenAI embeddings model initialized")
     
     def load_faction_data(self):
-        """Load the scraped faction data"""
-        if not self.faction_data_file.exists():
-            raise FileNotFoundError(
-                f"Faction data file not found at {self.faction_data_file}. "
-                "Please run faction_scraper_improved.py first!"
-            )
+        """Load the scraped faction data from organized files"""
+        if not self.faction_data_files:
+            print(f"❌ No faction data files found for '{self.faction_set}' faction set")
+            print(f"📁 Expected locations:")
+            
+            if self.faction_set == "base":
+                print(f"  {self.faction_data_dir / 'base_game' / 'base_game_factions.json'}")
+            elif self.faction_set == "pok":
+                print(f"  {self.faction_data_dir / 'prophecy_of_kings' / 'prophecy_of_kings_factions.json'}")
+            elif self.faction_set == "codex":
+                print(f"  {self.faction_data_dir / 'codex' / 'codex_factions.json'}")
+            elif self.faction_set == "all":
+                print(f"  {self.faction_data_dir / 'combined' / 'all_factions_combined.json'}")
+                print(f"  OR individual files from base_game/, prophecy_of_kings/, codex/")
+            
+            raise FileNotFoundError("Please run faction_scraper_improved.py first!")
         
-        with open(self.faction_data_file, 'r', encoding='utf-8') as f:
-            self.faction_data = json.load(f)
+        print(f"📂 Loading faction data from {len(self.faction_data_files)} file(s):")
+        
+        self.faction_data = []
+        for file_path in self.faction_data_files:
+            print(f"  📄 Loading: {file_path}")
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                self.faction_data.extend(data)
+                print(f"    ✅ Loaded {len(data)} factions")
         
         successful_factions = [f for f in self.faction_data if f.get("scraped_successfully", False)]
         
-        print(f"📊 Loaded faction data:")
-        print(f"  Total factions: {len(self.faction_data)}")
+        print(f"\n📊 Faction Data Summary:")
+        print(f"  Total factions loaded: {len(self.faction_data)}")
         print(f"  Successfully scraped: {len(successful_factions)}")
+        print(f"  Failed scrapes: {len(self.faction_data) - len(successful_factions)}")
+        
+        # Show breakdown by faction set
+        faction_sets = {}
+        for faction in self.faction_data:
+            faction_name = faction.get('name', 'Unknown')
+            if faction_name in ["The Arborec", "The Barony of Letnev", "The Clan of Saar", "The Embers of Muaat", "The Emirates of Hacan", "The Federation of Sol", "The Ghosts of Creuss", "The L1Z1X Mindnet", "The Mentak Coalition", "The Naalu Collective", "The Nekro Virus", "Sardakk N'orr", "The Universities of Jol-Nar", "The Winnu", "The Xxcha Kingdom", "The Yin Brotherhood", "The Yssaril Tribes"]:
+                faction_sets['Base Game'] = faction_sets.get('Base Game', 0) + 1
+            elif faction_name in ["The Argent Flight", "The Empyrean", "The Mahact Gene-Sorcerers", "The Naaz-Rokha Alliance", "The Nomad", "The Titans of Ul", "The Vuil'Raith Cabal"]:
+                faction_sets['Prophecy of Kings'] = faction_sets.get('Prophecy of Kings', 0) + 1
+            elif faction_name in ["The Council Keleres"]:
+                faction_sets['Codex'] = faction_sets.get('Codex', 0) + 1
+        
+        print(f"\n  📦 Factions by set:")
+        for set_name, count in faction_sets.items():
+            print(f"    {set_name}: {count} factions")
         
         return successful_factions
     
@@ -195,7 +293,7 @@ class FactionDataIntegrator:
             config['total_vectors'] = total_vectors
             config['faction_documents_added'] = faction_docs_added
             config['factions_included'] = True
-            config['last_faction_update'] = str(Path.cwd() / self.faction_data_file)
+            config['last_faction_update'] = str(Path.cwd() / self.faction_data_files[0]) # Use the first file as a proxy for the set
             
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(config, f, indent=2, ensure_ascii=False)
@@ -294,7 +392,36 @@ class FactionDataIntegrator:
 
 if __name__ == "__main__":
     """
-    Run the faction data integration
+    Run the faction data integration with support for different faction sets
     """
-    integrator = FactionDataIntegrator()
-    integrator.run_integration() 
+    import sys
+    
+    print("🚀 Twilight Imperium Faction Data Integration")
+    print("=" * 60)
+    
+    # Determine faction set from command line argument
+    faction_set = "all"  # default
+    if len(sys.argv) > 1:
+        faction_set = sys.argv[1].lower()
+        if faction_set not in ["base", "pok", "codex", "all"]:
+            print(f"❌ Invalid faction set: {faction_set}")
+            print("Valid options: base, pok, codex, all")
+            print("\nUsage examples:")
+            print("  python integrate_faction_data.py all     # Integrate all faction data")
+            print("  python integrate_faction_data.py base    # Integrate only base game factions")
+            print("  python integrate_faction_data.py pok     # Integrate only PoK factions")
+            print("  python integrate_faction_data.py codex   # Integrate only Codex factions")
+            sys.exit(1)
+    
+    print(f"🎯 Integrating {faction_set} faction data into vector store...")
+    
+    try:
+        integrator = FactionDataIntegrator(faction_set=faction_set)
+        integrator.run_integration()
+    except Exception as e:
+        print(f"❌ Integration failed: {e}")
+        print("\n💡 Make sure you have:")
+        print("  1. Run faction_scraper_improved.py first")
+        print("  2. Set your OPENAI_API_KEY environment variable")
+        print("  3. Created the initial vector store (embedding_generator.ipynb)")
+        sys.exit(1) 
