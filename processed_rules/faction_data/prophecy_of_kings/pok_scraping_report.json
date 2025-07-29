@@ -1,0 +1,28 @@
+{
+  "faction_set": "pok",
+  "set_description": "Prophecy of Kings",
+  "total_factions": 7,
+  "successful_scrapes": 7,
+  "failed_scrapes": 0,
+  "success_rate": "100.0%",
+  "section_statistics": {
+    "Faction Abilities": 7,
+    "FAQ": 7,
+    "Faction Specific Units": 7,
+    "Leaders": 7,
+    "Flagship": 7,
+    "Mech": 7,
+    "Faction Promissory Note": 4,
+    "Faction Technologies": 5
+  },
+  "successful_factions": [
+    "The Argent Flight",
+    "The Empyrean",
+    "The Mahact Gene-Sorcerers",
+    "The Naaz-Rokha Alliance",
+    "The Nomad",
+    "The Titans of Ul",
+    "The Vuil'Raith Cabal"
+  ],
+  "failed_factions": []
+}

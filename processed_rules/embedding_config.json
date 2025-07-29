@@ -1,7 +1,7 @@
 {
   "model_name": "text-embedding-3-small",
   "embedding_dimension": 1536,
-  "total_vectors": 409,
+  "total_vectors": 511,
   "total_documents": 286,
   "vector_store_path": "processed_rules\\vector_store",
   "created_from_chunks": 286,
@@ -9,7 +9,7 @@
     "learn_to_play_chunks": 182,
     "rulebook_chunks": 104
   },
-  "faction_documents_added": 123,
+  "faction_documents_added": 51,
   "factions_included": true,
-  "last_faction_update": "D:\\Twilight_imperium\\processed_rules\\faction_data_improved.json"
+  "last_faction_update": "D:\\Twilight_imperium\\processed_rules\\faction_data\\prophecy_of_kings\\prophecy_of_kings_factions.json"
 }
