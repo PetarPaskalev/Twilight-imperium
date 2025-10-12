@@ -74,10 +74,19 @@ class TwilightRulesSearcher:
                 "or create a .env file with your key."
             )
         
-        self.embedding_model = OpenAIEmbeddings(
-            model=self.config['model_name'],
-            openai_api_key=api_key
-        )
+        # Support custom base URL for OpenAI-compatible providers
+        base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+        if base_url:
+            self.embedding_model = OpenAIEmbeddings(
+                model=self.config['model_name'],
+                openai_api_key=api_key,
+                base_url=base_url
+            )
+        else:
+            self.embedding_model = OpenAIEmbeddings(
+                model=self.config['model_name'],
+                openai_api_key=api_key
+            )
         
         print(f"✅ Initialized embedding model: {self.config['model_name']}")
     

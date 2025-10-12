@@ -33,7 +33,7 @@ class TwilightImperiumLangGraphBot:
     Modern Twilight Imperium chatbot using LangGraph framework (Fixed Version)
     """
     
-    def __init__(self, model_name: str = "gpt-5-nano", temperature: float = 1):
+    def __init__(self, model_name: str = None, temperature: float = 1):
         """
         Initialize the LangGraph chatbot
         
@@ -41,7 +41,9 @@ class TwilightImperiumLangGraphBot:
             model_name: OpenAI model to use
             temperature: Response creativity (0.0 = focused, 1.0 = creative)
         """
-        self.model_name = model_name
+        # Allow environment override and choose a broadly available default
+        env_model = os.getenv("MODEL_NAME")
+        self.model_name = env_model or model_name or "gpt-4o-mini"
         self.temperature = temperature
         
         # Initialize components
@@ -60,13 +62,44 @@ class TwilightImperiumLangGraphBot:
                 "OpenAI API key not found. Please set OPENAI_API_KEY environment variable."
             )
         
-        self.llm = ChatOpenAI(
-            model=self.model_name,
-            temperature=self.temperature,
-            openai_api_key=api_key
-        )
+        # Support custom base URL for OpenAI-compatible providers
+        base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
+
+        # Some provider models (e.g., certain gpt-5 variants) only accept default temperature
+        pass_temperature = True
+        if base_url or ("gpt-5" in self.model_name.lower()):
+            pass_temperature = False
+
+        if base_url:
+            if pass_temperature:
+                self.llm = ChatOpenAI(
+                    model=self.model_name,
+                    openai_api_key=api_key,
+                    base_url=base_url
+                )
+            else:
+                self.llm = ChatOpenAI(
+                    model=self.model_name,
+                    openai_api_key=api_key,
+                    base_url=base_url
+                )
+        else:
+            if pass_temperature:
+                self.llm = ChatOpenAI(
+                    model=self.model_name,
+                    temperature=self.temperature,
+                    openai_api_key=api_key
+                )
+            else:
+                self.llm = ChatOpenAI(
+                    model=self.model_name,
+                    openai_api_key=api_key
+                )
         
-        print(f"✅ Initialized {self.model_name} with temperature {self.temperature}")
+        if pass_temperature:
+            print(f"✅ Initialized {self.model_name} with temperature {self.temperature}")
+        else:
+            print(f"✅ Initialized {self.model_name} with provider default temperature")
     
     def _setup_tools(self):
         """Setup tools for the agent"""
