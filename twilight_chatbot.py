@@ -29,12 +29,12 @@ class TwilightImperiumChatbot:
     Complete Twilight Imperium Fourth Edition chatbot with rule search capabilities
     """
     
-    def __init__(self, model_name: str = "gpt-4o", temperature: float = 0.1):
+    def __init__(self, model_name: str = "gpt-5-nano", temperature: float = 0.1):
         """
         Initialize the chatbot
         
         Args:
-            model_name: OpenAI model to use (gpt-4o, gpt-4, etc.)
+            model_name: OpenAI model to use (gpt-5-nano, gpt-5-nano, etc.)
             temperature: Response creativity (0.0 = focused, 1.0 = creative)
         """
         self.model_name = model_name

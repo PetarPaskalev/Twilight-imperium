@@ -1,0 +1,15 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.8.0
+redis>=5.0.4
+python-dotenv>=1.0.1
+requests>=2.32.3
+beautifulsoup4>=4.12.3
+faiss-cpu>=1.8.0.post1
+
+# LangChain / LangGraph stack used in this repo
+langchain-openai>=0.2.0
+langchain-core>=0.2.36
+langchain-community>=0.2.10
+langgraph>=0.2.16
+

@@ -33,7 +33,7 @@ class TwilightImperiumLangGraphBot:
     Modern Twilight Imperium chatbot using LangGraph framework (Fixed Version)
     """
     
-    def __init__(self, model_name: str = "gpt-4o", temperature: float = 0.1):
+    def __init__(self, model_name: str = "gpt-5-nano", temperature: float = 1):
         """
         Initialize the LangGraph chatbot
         
