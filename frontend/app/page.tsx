@@ -12,10 +12,19 @@ export default function Page() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const STORAGE_KEY = "ti_messages";
 
   useEffect(() => {
     const sid = window.localStorage.getItem("ti_session_id");
     if (sid) setSessionId(sid);
+    // Load any saved messages from previous visits
+    try {
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed: Message[] = JSON.parse(saved);
+        if (Array.isArray(parsed)) setMessages(parsed);
+      }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -23,6 +32,13 @@ export default function Page() {
   }, [messages]);
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading, [input, loading]);
+
+  // Persist messages so users can see previous answers on reload
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    } catch {}
+  }, [messages]);
 
   async function sendMessage() {
     if (!canSend) return;
@@ -62,42 +78,121 @@ export default function Page() {
     setMessages([]);
     setSessionId(null);
     window.localStorage.removeItem("ti_session_id");
+    window.localStorage.removeItem(STORAGE_KEY);
   }
 
   return (
-    <main style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      <header style={{ padding: "12px 16px", borderBottom: "1px solid #eee" }}>
-        <h1 style={{ margin: 0 }}>Twilight Imperium Assistant</h1>
-        <p style={{ margin: 0, color: "#555" }}>Ask about rules, strategy cards, and faction abilities.</p>
+    <main style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#0b0f14", color: "#e5e7eb" }}>
+      <header style={{ padding: "24px 20px", borderBottom: "1px solid #1f2430", background: "#0b0f14", position: "sticky", top: 0, zIndex: 10 }}>
+        <div style={{ maxWidth: 900, margin: "0 auto" }}>
+          <h1 style={{ margin: 0, color: "#ffffff", fontSize: "1.75rem" }}>Twilight Imperium Assistant</h1>
+          <p style={{ margin: "8px 0 0 0", color: "#9aa0a6" }}>Ask about rules, strategy cards, and faction abilities.</p>
+        </div>
       </header>
 
-      <section style={{ flex: 1, padding: 16, overflowY: "auto" }}>
-        {messages.length === 0 && (
-          <div style={{ color: "#777", marginTop: 24 }}>
-            Try: "What does the Leadership strategy card do?"
+      <section style={{ flex: 1, padding: "24px 20px", overflowY: "auto" }}>
+        <div style={{ maxWidth: 900, margin: "0 auto" }}>
+          {messages.length === 0 && (
+            <div style={{ color: "#777", marginTop: 32, fontSize: "0.95rem" }}>
+              Try: "What does the Leadership strategy card do?"
+            </div>
+          )}
+          <div
+            style={{
+              background: "#151821",
+              border: "1px solid #222832",
+              borderRadius: 12,
+              padding: "24px",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 20
+            }}
+          >
+            {messages.map((m, i) => (
+              <div 
+                key={i} 
+                style={{ 
+                  whiteSpace: "pre-wrap",
+                  animation: "fadeIn 0.4s ease-in-out"
+                }}
+              >
+                {m.role === "user" ? (
+                  <div
+                    style={{
+                      background: "#101521",
+                      color: "#e6e9ef",
+                      border: "1px solid #232a36",
+                      borderRadius: 10,
+                      padding: "14px 16px",
+                      lineHeight: 1.6,
+                      width: "fit-content",
+                      maxWidth: "100%"
+                    }}
+                  >
+                    {m.content}
+                  </div>
+                ) : (
+                  <div style={{ color: "#e6e9ef", lineHeight: 1.7, padding: "4px 0" }}>
+                    {m.content}
+                  </div>
+                )}
+              </div>
+            ))}
+            <div ref={endRef} />
+
+            {/* Input area inside the same box */}
+            <div style={{ display: "flex", gap: 10, paddingTop: 16 }}>
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+                placeholder="Ask about Twilight Imperium..."
+                style={{
+                  flex: 1,
+                  padding: "14px 16px",
+                  border: "1px solid #2a2f3a",
+                  borderRadius: 8,
+                  background: "#0f131a",
+                  color: "#e5e7eb",
+                  fontSize: "0.95rem"
+                }}
+              />
+              <button 
+                onClick={sendMessage} 
+                disabled={!canSend} 
+                style={{ 
+                  padding: "14px 20px", 
+                  background: "#2563eb", 
+                  color: "#fff", 
+                  border: "none", 
+                  borderRadius: 8,
+                  cursor: canSend ? "pointer" : "not-allowed",
+                  opacity: canSend ? 1 : 0.6,
+                  transition: "all 0.2s ease"
+                }}
+              >
+                {loading ? "Thinking..." : "Send"}
+              </button>
+              <button 
+                onClick={clearChat} 
+                style={{ 
+                  padding: "14px 20px", 
+                  background: "#374151", 
+                  color: "#e5e7eb", 
+                  border: "none", 
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  transition: "all 0.2s ease"
+                }}
+              >
+                Clear
+              </button>
+            </div>
           </div>
-        )}
-        {messages.map((m, i) => (
-          <div key={i} style={{ margin: "8px 0", whiteSpace: "pre-wrap" }}>
-            <strong>{m.role === "user" ? "You" : "Assistant"}:</strong> {m.content}
-          </div>
-        ))}
-        <div ref={endRef} />
+        </div>
       </section>
 
-      <footer style={{ padding: 16, borderTop: "1px solid #eee", display: "flex", gap: 8 }}>
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-          placeholder="Ask about Twilight Imperium..."
-          style={{ flex: 1, padding: 12, border: "1px solid #ddd", borderRadius: 8 }}
-        />
-        <button onClick={sendMessage} disabled={!canSend} style={{ padding: "12px 16px" }}>
-          {loading ? "Thinking..." : "Send"}
-        </button>
-        <button onClick={clearChat} style={{ padding: "12px 16px" }}>Clear</button>
-      </footer>
     </main>
   );
 }

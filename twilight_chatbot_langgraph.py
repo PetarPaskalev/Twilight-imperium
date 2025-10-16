@@ -1,18 +1,19 @@
 """
-Twilight Imperium Chatbot with LangGraph (Fixed Version)
-Updated with correct imports for current LangGraph version
+Twilight Imperium Chatbot with LangGraph
+Modern implementation using LangGraph framework
 
-This version fixes import issues and uses the proper LangGraph API.
+This is the updated version that replaces deprecated LangChain agents
+with the modern LangGraph approach for better performance and flexibility.
 """
 
 import os
-import re
 import operator
-from typing import Annotated, Dict, List, TypedDict, Sequence
+from typing import Annotated, Dict, List, TypedDict
 from dotenv import load_dotenv
 
-# LangGraph and LangChain imports (updated)
+# LangGraph and LangChain imports
 from langgraph.graph import StateGraph, END
+from langgraph.prebuilt import ToolExecutor
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
 from langchain_core.tools import tool
@@ -26,15 +27,17 @@ load_dotenv()
 
 class ChatState(TypedDict):
     """State for the chatbot conversation"""
-    messages: Annotated[Sequence[BaseMessage], operator.add]
+    messages: Annotated[List[BaseMessage], operator.add]
+    user_input: str
+    response: str
 
 
 class TwilightImperiumLangGraphBot:
     """
-    Modern Twilight Imperium chatbot using LangGraph framework (Fixed Version)
+    Modern Twilight Imperium chatbot using LangGraph framework
     """
     
-    def __init__(self, model_name: str = None, temperature: float = 1):
+    def __init__(self, model_name: str = "gpt-4o", temperature: float = 0.1):
         """
         Initialize the LangGraph chatbot
         
@@ -42,9 +45,7 @@ class TwilightImperiumLangGraphBot:
             model_name: OpenAI model to use
             temperature: Response creativity (0.0 = focused, 1.0 = creative)
         """
-        # Allow environment override and choose a broadly available default
-        env_model = os.getenv("MODEL_NAME")
-        self.model_name = env_model or model_name or "gpt-4o-mini"
+        self.model_name = model_name
         self.temperature = temperature
         
         # Initialize components
@@ -63,47 +64,16 @@ class TwilightImperiumLangGraphBot:
                 "OpenAI API key not found. Please set OPENAI_API_KEY environment variable."
             )
         
-        # Support custom base URL for OpenAI-compatible providers
-        base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE")
-
-        # Some provider models (e.g., certain gpt-5 variants) only accept default temperature
-        pass_temperature = True
-        if base_url or ("gpt-5" in self.model_name.lower()):
-            pass_temperature = False
-
-        if base_url:
-            if pass_temperature:
-                self.llm = ChatOpenAI(
-                    model=self.model_name,
-                    openai_api_key=api_key,
-                    base_url=base_url
-                )
-            else:
-                self.llm = ChatOpenAI(
-                    model=self.model_name,
-                    openai_api_key=api_key,
-                    base_url=base_url
-                )
-        else:
-            if pass_temperature:
-                self.llm = ChatOpenAI(
-                    model=self.model_name,
-                    temperature=self.temperature,
-                    openai_api_key=api_key
-                )
-            else:
-                self.llm = ChatOpenAI(
-                    model=self.model_name,
-                    openai_api_key=api_key
-                )
+        self.llm = ChatOpenAI(
+            model=self.model_name,
+            temperature=self.temperature,
+            openai_api_key=api_key
+        )
         
-        if pass_temperature:
-            print(f"✅ Initialized {self.model_name} with temperature {self.temperature}")
-        else:
-            print(f"✅ Initialized {self.model_name} with provider default temperature")
+        print(f"✅ Initialized {self.model_name} with temperature {self.temperature}")
     
     def _setup_tools(self):
-        """Setup tools for the agent"""
+        """Setup tools and tool executor"""
         # Get our custom search tool
         search_tool = create_twilight_rules_tool()
         
@@ -112,10 +82,11 @@ class TwilightImperiumLangGraphBot:
         def search_twilight_rules(query: str) -> str:
             """Search the official Twilight Imperium Fourth Edition rules. 
             Use this when users ask about game rules, mechanics, combat, movement, 
-            strategy cards, victory conditions, faction abilities, or any gameplay questions."""
+            strategy cards, victory conditions, or any gameplay questions."""
             return search_tool.func(query)
         
         self.tools = [search_twilight_rules]
+        self.tool_executor = ToolExecutor(self.tools)
         
         # Bind tools to LLM
         self.llm_with_tools = self.llm.bind_tools(self.tools)
@@ -132,7 +103,7 @@ class TwilightImperiumLangGraphBot:
             
             # If the last message has tool calls, execute them
             if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
-                return "call_tool"
+                return "action"
             else:
                 return "end"
         
@@ -140,27 +111,28 @@ class TwilightImperiumLangGraphBot:
             """Call the LLM with system prompt and conversation history"""
             messages = state['messages']
             
-            # Add system message if this is the start of a new conversation
-            if not messages or not any(isinstance(msg, AIMessage) for msg in messages[:2]):
+            # Add system message if this is the start
+            if not messages or not isinstance(messages[0], type(messages[0])) or \
+               not hasattr(messages[0], 'content') or \
+               "Twilight Imperium Fourth Edition assistant" not in str(messages[0]):
                 
-                system_message = HumanMessage(content="""You are a knowledgeable assistant for Twilight Imperium Fourth Edition. 
+                system_message = AIMessage(content="""I am a knowledgeable assistant for Twilight Imperium Fourth Edition. 
 
 IMPORTANT GUIDELINES:
-• Always search the official rules when asked about game mechanics, faction abilities, or gameplay questions
+• Always search the official rules when asked about game mechanics
 • Analyze ALL search results to find the most relevant information  
-• Consider context carefully (e.g., "Leadership" strategy card vs "Leaders" faction units)
+• Consider context carefully (e.g., "Leadership" strategy card vs "Leaders" units)
 • Be precise and accurate based on official rules
-• Cite sources when referencing specific rules
+• Cite sources (Learn to Play vs Rulebook)
 • Ask for clarification if questions are ambiguous
 • Be encouraging and help players learn this complex game
- • Use plain text only. Do not use Markdown formatting (no **bold**, *italics*, backticks, code fences, headings, or tables). Output clean plain text.
 
 I excel at explaining:
 - Strategy Cards (Leadership, Diplomacy, Politics, etc.)
 - Combat mechanics (Space & Ground Combat)
 - Movement and Tactical Actions
 - Victory Conditions and Objectives
-- Faction abilities, technologies, and unique units
+- Faction abilities and technologies
 - Trading and negotiation rules
 
 Let me help you master the galaxy!""")
@@ -172,7 +144,7 @@ Let me help you master the galaxy!""")
             
             return {"messages": [response]}
         
-        def call_tool(state: ChatState) -> Dict:
+        def call_tools(state: ChatState) -> Dict:
             """Execute any tool calls"""
             messages = state['messages']
             last_message = messages[-1]
@@ -181,15 +153,8 @@ Let me help you master the galaxy!""")
             tool_messages = []
             if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
                 for tool_call in last_message.tool_calls:
-                    # Get the tool function
-                    tool_name = tool_call["name"]
-                    tool_input = tool_call["args"]
-                    
                     # Execute the tool
-                    if tool_name == "search_twilight_rules":
-                        result = self.tools[0].func(**tool_input)
-                    else:
-                        result = f"Unknown tool: {tool_name}"
+                    result = self.tool_executor.invoke(tool_call)
                     
                     # Create tool message
                     tool_message = ToolMessage(
@@ -205,7 +170,7 @@ Let me help you master the galaxy!""")
         
         # Add nodes
         workflow.add_node("agent", call_model)
-        workflow.add_node("call_tool", call_tool)
+        workflow.add_node("action", call_tools)
         
         # Set entry point
         workflow.set_entry_point("agent")
@@ -215,13 +180,13 @@ Let me help you master the galaxy!""")
             "agent",
             should_continue,
             {
-                "call_tool": "call_tool",
+                "action": "action",
                 "end": END
             }
         )
         
-        # Add edge from tool back to agent
-        workflow.add_edge("call_tool", "agent")
+        # Add edge from action back to agent
+        workflow.add_edge("action", "agent")
         
         # Compile the graph
         self.app = workflow.compile()
@@ -250,7 +215,9 @@ Let me help you master the galaxy!""")
             
             # Create initial state
             initial_state = {
-                "messages": messages
+                "messages": messages,
+                "user_input": user_input,
+                "response": ""
             }
             
             # Run the graph
@@ -262,9 +229,7 @@ Let me help you master the galaxy!""")
                 # Get the last AI message
                 for message in reversed(final_messages):
                     if isinstance(message, AIMessage) and message.content:
-                        text = message.content
-                        text = self._to_plain_text(text)
-                        return text
+                        return message.content
             
             return "I apologize, but I couldn't generate a response. Please try rephrasing your question."
             
@@ -272,31 +237,11 @@ Let me help you master the galaxy!""")
             error_msg = f"I encountered an error: {e}. Please try rephrasing your question."
             print(f"❌ Error in chat: {e}")
             return error_msg
-
-    def _to_plain_text(self, text: str) -> str:
-        """Best-effort conversion to plain text by removing common Markdown tokens.
-        Keeps content readable without styling.
-        """
-        if not text:
-            return text
-        out = text
-        # Remove code fences and inline backticks
-        out = re.sub(r"```[\s\S]*?```", lambda m: m.group(0).replace("```", ""), out)
-        out = out.replace("`", "")
-        # Remove bold/italics markers
-        out = out.replace("**", "").replace("__", "").replace("*", "").replace("_", "")
-        # Strip leading markdown headings and list numbering symbols where reasonable
-        out = re.sub(r"^\s*#{1,6}\s+", "", out, flags=re.MULTILINE)
-        # Convert markdown lists '- ' to simple bullets
-        out = re.sub(r"^(\s*)-\s+", r"\1• ", out, flags=re.MULTILINE)
-        # Horizontal rules
-        out = re.sub(r"^---+$", "", out, flags=re.MULTILINE)
-        return out
     
     def start_conversation(self):
         """Start an interactive chat session with memory"""
         print("\n" + "="*80)
-        print("🚀 TWILIGHT IMPERIUM FOURTH EDITION ASSISTANT (LangGraph Fixed)")
+        print("🚀 TWILIGHT IMPERIUM FOURTH EDITION ASSISTANT (LangGraph)")
         print("="*80)
         print("Ask me anything about Twilight Imperium rules and gameplay!")
         print("Type 'quit', 'exit', or 'bye' to end the conversation.")
@@ -360,10 +305,12 @@ Let me help you master the galaxy!""")
             "What are the victory conditions?",
             "How does ground combat work?",
             "What happens when I activate a system?",
-            "What are the Arborec's special abilities?",
-            "How does the Federation of Sol play differently?",
-            "What's unique about the Ghosts of Creuss?",
-            "Tell me about Sardakk N'orr's faction technology",
+            "How do I research technology?",
+            "What are action cards?",
+            "How does trading work?",
+            "What are faction abilities?",
+            "How do I resolve space combat?",
+            "What's the difference between Leaders and Leadership?",
             "How do I use the Construction strategy card?"
         ]
         
@@ -376,20 +323,20 @@ Let me help you master the galaxy!""")
         print("🔄 Use 'clear' to reset conversation history")
 
 
-def test_fixed_chatbot():
-    """Test the fixed LangGraph chatbot"""
-    print("🧪 Testing Fixed LangGraph Twilight Imperium Chatbot")
+def test_langgraph_chatbot():
+    """Test the LangGraph chatbot with the context problem"""
+    print("🧪 Testing LangGraph Twilight Imperium Chatbot")
     print("="*60)
     
     try:
         # Initialize the chatbot
         chatbot = TwilightImperiumLangGraphBot()
         
-        # Test questions including faction-specific ones
+        # Test questions
         test_questions = [
             "What does leadership do in the game?",
-            "What are the Arborec's special abilities?",
-            "How does space combat work?"
+            "How does space combat work?",
+            "What are the victory conditions?"
         ]
         
         for i, question in enumerate(test_questions[:2], 1):  # Test first 2
@@ -399,7 +346,7 @@ def test_fixed_chatbot():
             response = chatbot.chat(question)
             print(f"🤖 Response: {response}")
         
-        print("\n✅ Fixed LangGraph chatbot test complete!")
+        print("\n✅ LangGraph chatbot test complete!")
         return True
         
     except Exception as e:
@@ -415,7 +362,7 @@ if __name__ == "__main__":
     
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         # Run test mode
-        test_fixed_chatbot()
+        test_langgraph_chatbot()
     else:
         # Run interactive chat
         try:
@@ -425,5 +372,6 @@ if __name__ == "__main__":
             print(f"❌ Failed to start chatbot: {e}")
             print("Please ensure:")
             print("1. Your OpenAI API key is set")
-            print("2. You've completed Steps 1-6 (PDFs processed and faction data integrated)")
-            print("3. All required packages are installed") 
+            print("2. You've completed Steps 1-4 (PDFs processed and vector store created)")
+            print("3. All required packages are installed")
+            print("4. Run: pip install langgraph") 
