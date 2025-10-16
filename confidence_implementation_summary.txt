@@ -1,0 +1,44 @@
+CONFIDENCE SCORING IMPLEMENTATION SUMMARY
+=========================================
+
+✅ COMPLETED CHANGES:
+
+1. ENABLED LOGPROBS IN OPENAI API
+   - Modified _setup_llm() method in twilight_chatbot_langgraph_fixed.py
+   - Added model_kwargs with logprobs=True and top_logprobs=3
+   - This tells OpenAI to return probability scores for each generated token
+
+2. ADDED CONFIDENCE CALCULATION METHOD
+   - Created _calculate_confidence_score() method
+   - Extracts log probabilities from response metadata
+   - Converts logprobs to actual probabilities using math.exp()
+   - Calculates average probability across all tokens
+   - Returns score between 0.0-1.0 (or -1.0 if not available)
+
+3. INTEGRATED LOGGING INTO CHAT METHOD
+   - Modified chat() method to extract response_metadata
+   - Calculates confidence score after each response
+   - Logs score with format: "📊 [CONFIDENCE SCORE] X.XXXX (0.0-1.0 scale)"
+   - Score is ONLY logged in backend, NOT sent to frontend
+
+4. DOCUMENTATION
+   - Added feature description to file docstring
+   - Created CONFIDENCE_SCORING.md with detailed explanation
+   - Includes score interpretation guide and use cases
+
+=========================================
+
+HOW TO TEST:
+1. Start your backend: python twilight_api.py
+2. Send a chat message from your frontend
+3. Check the backend terminal/console for log output
+4. You should see: 📊 [CONFIDENCE SCORE] 0.XXXX (0.0-1.0 scale)
+
+WHAT YOU'LL SEE IN LOGS:
+- High confidence (0.8-1.0): Clear factual answers
+- Medium confidence (0.5-0.8): Standard responses
+- Low confidence (0.3-0.5): Uncertain or speculative answers
+
+NOTE: The confidence score is NOT sent to the frontend API response,
+only logged in the backend console/logs as requested.
+

@@ -3,10 +3,17 @@ Twilight Imperium Chatbot with LangGraph (Fixed Version)
 Updated with correct imports for current LangGraph version
 
 This version fixes import issues and uses the proper LangGraph API.
+
+Features:
+- Confidence scoring using OpenAI's logprobs (logged in backend only)
+- Confidence scores range from 0.0 to 1.0 (higher = more confident)
+- Scores are calculated from token-level log probabilities
+- Logged with format: "📊 [CONFIDENCE SCORE] X.XXXX (0.0-1.0 scale)"
 """
 
 import os
 import re
+import math
 import operator
 from typing import Annotated, Dict, List, TypedDict, Sequence
 from dotenv import load_dotenv
@@ -71,30 +78,37 @@ class TwilightImperiumLangGraphBot:
         if base_url or ("gpt-5" in self.model_name.lower()):
             pass_temperature = False
 
+        # Model kwargs for enabling logprobs (for confidence scoring)
+        model_kwargs = {"logprobs": True, "top_logprobs": 3}
+
         if base_url:
             if pass_temperature:
                 self.llm = ChatOpenAI(
                     model=self.model_name,
                     openai_api_key=api_key,
-                    base_url=base_url
+                    base_url=base_url,
+                    model_kwargs=model_kwargs
                 )
             else:
                 self.llm = ChatOpenAI(
                     model=self.model_name,
                     openai_api_key=api_key,
-                    base_url=base_url
+                    base_url=base_url,
+                    model_kwargs=model_kwargs
                 )
         else:
             if pass_temperature:
                 self.llm = ChatOpenAI(
                     model=self.model_name,
                     temperature=self.temperature,
-                    openai_api_key=api_key
+                    openai_api_key=api_key,
+                    model_kwargs=model_kwargs
                 )
             else:
                 self.llm = ChatOpenAI(
                     model=self.model_name,
-                    openai_api_key=api_key
+                    openai_api_key=api_key,
+                    model_kwargs=model_kwargs
                 )
         
         if pass_temperature:
@@ -263,6 +277,17 @@ Let me help you master the galaxy!""")
                 for message in reversed(final_messages):
                     if isinstance(message, AIMessage) and message.content:
                         text = message.content
+                        
+                        # Calculate and log confidence score (backend only)
+                        if hasattr(message, 'response_metadata'):
+                            confidence = self._calculate_confidence_score(message.response_metadata)
+                            if confidence >= 0:
+                                print(f"📊 [CONFIDENCE SCORE] {confidence:.4f} (0.0-1.0 scale)")
+                            else:
+                                print(f"📊 [CONFIDENCE SCORE] Not available")
+                        else:
+                            print(f"📊 [CONFIDENCE SCORE] Metadata not available")
+                        
                         text = self._to_plain_text(text)
                         return text
             
@@ -272,6 +297,50 @@ Let me help you master the galaxy!""")
             error_msg = f"I encountered an error: {e}. Please try rephrasing your question."
             print(f"❌ Error in chat: {e}")
             return error_msg
+
+    def _calculate_confidence_score(self, response_metadata: Dict) -> float:
+        """Calculate a confidence score from OpenAI's logprobs.
+        
+        Returns a score between 0.0 and 1.0, where higher values indicate
+        higher confidence in the response.
+        
+        Args:
+            response_metadata: The response metadata from the LLM
+            
+        Returns:
+            Confidence score (0.0-1.0), or -1.0 if logprobs not available
+        """
+        try:
+            # Extract logprobs from response metadata
+            logprobs_data = response_metadata.get("logprobs")
+            if not logprobs_data:
+                return -1.0
+            
+            # Get the content logprobs (list of token logprobs)
+            content = logprobs_data.get("content", [])
+            if not content:
+                return -1.0
+            
+            # Calculate average probability from logprobs
+            # logprob = log(probability), so probability = exp(logprob)
+            probabilities = []
+            for token_data in content:
+                logprob = token_data.get("logprob")
+                if logprob is not None:
+                    # Convert log probability to probability
+                    probability = math.exp(logprob)
+                    probabilities.append(probability)
+            
+            if not probabilities:
+                return -1.0
+            
+            # Return average probability as confidence score
+            confidence = sum(probabilities) / len(probabilities)
+            return round(confidence, 4)
+            
+        except Exception as e:
+            print(f"⚠️  Error calculating confidence score: {e}")
+            return -1.0
 
     def _to_plain_text(self, text: str) -> str:
         """Best-effort conversion to plain text by removing common Markdown tokens.
