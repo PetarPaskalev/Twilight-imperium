@@ -1,7 +1,7 @@
 {
   "model_name": "text-embedding-3-small",
   "embedding_dimension": 1536,
-  "total_vectors": 673,
+  "total_vectors": 694,
   "total_documents": 286,
   "vector_store_path": "processed_rules\\vector_store",
   "created_from_chunks": 286,
