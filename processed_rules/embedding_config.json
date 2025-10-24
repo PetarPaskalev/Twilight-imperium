@@ -1,21 +1,21 @@
 {
   "model_name": "text-embedding-3-small",
   "embedding_dimension": 1536,
-  "total_vectors": 694,
+  "total_vectors": 862,
   "total_documents": 286,
   "vector_store_path": "processed_rules\\vector_store",
   "created_from_chunks": 286,
   "sources": {
     "learn_to_play_chunks": 182,
     "rulebook_chunks": 104,
-    "twilight_pravila_chunks": 88,
-    "official_faq_chunks": 53,
+    "twilight_pravila_chunks": 84,
+    "official_faq_chunks": 84,
     "fandom_technologies_chunks": 21,
     "fandom_codex_section_chunks": 0
   },
   "faction_documents_added": 51,
   "factions_included": true,
   "last_faction_update": "D:\\Twilight_imperium\\processed_rules\\faction_data\\prophecy_of_kings\\prophecy_of_kings_factions.json",
-  "docx_documents_added": 141,
+  "docx_documents_added": 168,
   "fandom_documents_added": 21
 }

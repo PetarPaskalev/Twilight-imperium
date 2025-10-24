@@ -19,6 +19,9 @@ build/
 # Jupyter
 .ipynb_checkpoints
 
+# Data files (local only)
+dataset/
+
 # Node / Next.js
 /node_modules
 frontend/node_modules
