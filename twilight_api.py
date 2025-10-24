@@ -17,8 +17,9 @@ import os
 import json
 import uuid
 from typing import List, Optional, Dict, Any
+from datetime import date
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -32,6 +33,9 @@ from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 
 # Import chatbot (this will also validate your vector store & embeddings config)
 from twilight_chatbot_langgraph_fixed import TwilightImperiumLangGraphBot
+
+# Supabase client for auth
+from supabase import create_client, Client
 
 
 # -------------------------------
@@ -80,6 +84,120 @@ def _create_redis_client():
 
     return None
 
+
+# -------------------------------
+# Supabase client for auth
+# -------------------------------
+
+def _create_supabase_client() -> Optional[Client]:
+    """Create a Supabase client using service role key for backend auth.
+
+    If env is not configured, returns None and the API works in dev mode
+    without authentication (useful for local testing).
+    """
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_SERVICE_KEY")  # service_role key
+    if not url or not key:
+        print("⚠️  SUPABASE_URL/SUPABASE_SERVICE_KEY not set - auth disabled (dev mode)")
+        return None
+    try:
+        return create_client(url, key)
+    except Exception as e:
+        print(f"⚠️  Failed to create Supabase client: {e}")
+        return None
+
+supabase_client: Optional[Client] = None
+
+def _get_supabase() -> Optional[Client]:
+    global supabase_client
+    if supabase_client is None:
+        supabase_client = _create_supabase_client()
+    return supabase_client
+
+# Simple tier limits; can be tuned later
+TIER_LIMITS: Dict[str, int] = {
+    "free": 20,
+    "paid": 500,
+}
+
+
+# -------------------------------
+# Auth and usage helpers
+# -------------------------------
+
+async def verify_token(authorization: str = Header(None)) -> Dict[str, Any]:
+    """Verify JWT (Supabase) and return minimal user info.
+
+    Falls back to a dev user when Supabase is not configured.
+    """
+    supabase = _get_supabase()
+    if not supabase:
+        return {"user_id": "dev-user", "email": "dev@localhost", "tier": "free"}
+
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+
+    token = authorization.replace("Bearer ", "")
+    try:
+        user_response = supabase.auth.get_user(token)
+        if not user_response or not getattr(user_response, "user", None):
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        user_id = user_response.user.id  # type: ignore[attr-defined]
+        user_email = getattr(user_response.user, "email", None)  # type: ignore[attr-defined]
+
+        profile_response = (
+            supabase
+            .table("user_profiles")
+            .select("*")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        if not getattr(profile_response, "data", None):
+            raise HTTPException(status_code=404, detail="User profile not found")
+
+        tier = profile_response.data.get("tier", "free")  # type: ignore[assignment]
+        return {"user_id": user_id, "email": user_email, "tier": tier}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
+
+
+async def check_and_increment_usage(user_info: Dict[str, Any]) -> None:
+    """Ensure the user is within their daily message limit and increment usage.
+
+    Skips when Supabase is not configured (dev mode).
+    """
+    supabase = _get_supabase()
+    if not supabase:
+        return
+
+    user_id = user_info["user_id"]
+    tier = user_info.get("tier", "free")
+    limit = TIER_LIMITS.get(tier, 20)
+
+    today = str(date.today())
+    usage_response = (
+        supabase
+        .table("user_usage")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq("date", today)
+        .execute()
+    )
+
+    if getattr(usage_response, "data", None):
+        current_count = usage_response.data[0]["message_count"]  # type: ignore[index]
+        if current_count >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Daily message limit reached ({limit} messages for {tier} tier)",
+            )
+        supabase.table("user_usage").update({"message_count": current_count + 1}).eq("user_id", user_id).eq("date", today).execute()
+    else:
+        supabase.table("user_usage").insert({"user_id": user_id, "date": today, "message_count": 1}).execute()
 
 # -------------------------------
 # Message (de)serialization helpers
@@ -231,9 +349,35 @@ def health() -> Dict[str, str]:
     return {"status": "healthy"}
 
 
+@app.get("/me")
+async def get_current_user(user_info: Dict[str, Any] = Depends(verify_token)) -> Dict[str, Any]:
+    """Return current user info and today's usage summary."""
+    supabase = _get_supabase()
+    user_id = user_info["user_id"]
+    tier = user_info.get("tier", "free")
+    limit = TIER_LIMITS.get(tier, 20)
+
+    used = 0
+    if supabase:
+        today = str(date.today())
+        usage_response = supabase.table("user_usage").select("*").eq("user_id", user_id).eq("date", today).execute()
+        if getattr(usage_response, "data", None):
+            used = usage_response.data[0]["message_count"]
+
+    return {
+        "user_id": user_id,
+        "email": user_info.get("email"),
+        "tier": tier,
+        "usage": {"used": used, "limit": limit, "remaining": max(0, limit - used)},
+    }
+
+
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest) -> ChatResponse:
+async def chat(req: ChatRequest, user_info: Dict[str, Any] = Depends(verify_token)) -> ChatResponse:
     try:
+        # Enforce per-user usage limits
+        await check_and_increment_usage(user_info)
+
         chatbot = _get_chatbot()
 
         # Ensure a session id exists
