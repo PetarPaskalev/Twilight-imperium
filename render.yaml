@@ -8,10 +8,20 @@ services:
     startCommand: uvicorn twilight_api:app --host 0.0.0.0 --port $PORT
     autoDeploy: true
     envVars:
-      - key: OPENAI_API_KEY     # set in Render dashboard (do not commit)
+      # Supabase Authentication (set these in Render dashboard)
+      - key: SUPABASE_URL
         sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      # OpenAI API
+      - key: OPENAI_API_KEY
+        sync: false
+      # CORS Configuration
       - key: ALLOWED_ORIGINS
         value: https://twilight-imperium-rose.vercel.app
+      # Session Settings
       - key: SESSION_TTL_SECONDS
         value: "604800"
       # Optional if you add Redis later:
