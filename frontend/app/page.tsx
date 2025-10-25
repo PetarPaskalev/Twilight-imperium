@@ -19,13 +19,6 @@ export default function Page() {
   const endRef = useRef<HTMLDivElement | null>(null);
   const STORAGE_KEY = "ti_messages";
 
-  // Show auth modal if user is not authenticated after loading
-  useEffect(() => {
-    if (!authLoading && !user) {
-      setShowAuthModal(true);
-    }
-  }, [authLoading, user]);
-
   useEffect(() => {
     const sid = window.localStorage.getItem("ti_session_id");
     if (sid) setSessionId(sid);
@@ -118,36 +111,44 @@ export default function Page() {
   }
 
   return (
-    <main style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#0b0f14", color: "#e5e7eb", position: "relative" }}>
+    <main style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#0b0f14", color: "#e5e7eb" }}>
       {/* Authentication Modal */}
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
       
-      {/* User Profile Display */}
-      {user && <UserProfile />}
-      
       <header style={{ padding: "24px 20px", borderBottom: "1px solid #1f2430", background: "#0b0f14", position: "sticky", top: 0, zIndex: 10 }}>
-        <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
+        <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem" }}>
+          {/* Left side - User Profile when logged in */}
+          <div style={{ display: "flex", alignItems: "center", gap: "2rem", flex: 1 }}>
+            {user && <UserProfile />}
+          </div>
+          
+          {/* Center/Right - Title and description */}
+          <div style={{ flex: 2 }}>
             <h1 style={{ margin: 0, color: "#ffffff", fontSize: "1.75rem" }}>Twilight Imperium Assistant</h1>
             <p style={{ margin: "8px 0 0 0", color: "#9aa0a6" }}>Ask about rules, strategy cards, and faction abilities.</p>
           </div>
-          {!user && (
-            <button
-              onClick={() => setShowAuthModal(true)}
-              style={{
-                padding: "10px 20px",
-                background: "#2563eb",
-                color: "#fff",
-                border: "none",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontSize: "0.95rem",
-                fontWeight: "bold",
-              }}
-            >
-              Sign In
-            </button>
-          )}
+          
+          {/* Right side - Sign In button when not logged in */}
+          <div style={{ flex: 1, display: "flex", justifyContent: "flex-end" }}>
+            {!user && (
+              <button
+                onClick={() => setShowAuthModal(true)}
+                style={{
+                  padding: "10px 20px",
+                  background: "#2563eb",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  fontSize: "0.95rem",
+                  fontWeight: "bold",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Sign In / Sign Up
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
