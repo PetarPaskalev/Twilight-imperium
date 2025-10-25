@@ -1,3 +1,5 @@
+import { AuthProvider } from '../contexts/AuthContext';
+
 export const metadata = {
   title: "Twilight Imperium Assistant",
   description: "Ask about TI4 rules and factions",
@@ -20,7 +22,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }
         `}</style>
       </head>
-      <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif' }}>{children}</body>
+      <body style={{ margin: 0, fontFamily: 'system-ui, sans-serif' }}>
+        <AuthProvider>
+          {children}
+        </AuthProvider>
+      </body>
     </html>
   );
 }

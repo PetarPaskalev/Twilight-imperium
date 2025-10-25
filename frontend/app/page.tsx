@@ -1,18 +1,30 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from '../contexts/AuthContext';
+import AuthModal from '../components/AuthModal';
+import UserProfile from '../components/UserProfile';
 
 type Message = { role: "user" | "assistant"; content: string };
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export default function Page() {
+  const { user, session, loading: authLoading } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
   const STORAGE_KEY = "ti_messages";
+
+  // Show auth modal if user is not authenticated after loading
+  useEffect(() => {
+    if (!authLoading && !user) {
+      setShowAuthModal(true);
+    }
+  }, [authLoading, user]);
 
   useEffect(() => {
     const sid = window.localStorage.getItem("ti_session_id");
@@ -42,17 +54,41 @@ export default function Page() {
 
   async function sendMessage() {
     if (!canSend) return;
+    
+    // Check if user is authenticated
+    if (!user || !session) {
+      setShowAuthModal(true);
+      return;
+    }
+
     const userMsg: Message = { role: "user", content: input };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
+    
     try {
+      // Get JWT token from session
+      const token = session.access_token;
+      
       const res = await fetch(`${API_URL}/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
         body: JSON.stringify({ message: userMsg.content, session_id: sessionId ?? undefined }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      
+      if (!res.ok) {
+        if (res.status === 401) {
+          throw new Error("Authentication failed. Please log in again.");
+        }
+        if (res.status === 429) {
+          throw new Error("Daily message limit reached. Upgrade to paid tier for more messages.");
+        }
+        throw new Error(`HTTP ${res.status}`);
+      }
+      
       const data = await res.json();
       if (data.session_id && data.session_id !== sessionId) {
         setSessionId(data.session_id);
@@ -82,11 +118,36 @@ export default function Page() {
   }
 
   return (
-    <main style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#0b0f14", color: "#e5e7eb" }}>
+    <main style={{ display: "flex", flexDirection: "column", minHeight: "100vh", background: "#0b0f14", color: "#e5e7eb", position: "relative" }}>
+      {/* Authentication Modal */}
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      
+      {/* User Profile Display */}
+      {user && <UserProfile />}
+      
       <header style={{ padding: "24px 20px", borderBottom: "1px solid #1f2430", background: "#0b0f14", position: "sticky", top: 0, zIndex: 10 }}>
-        <div style={{ maxWidth: 900, margin: "0 auto" }}>
-          <h1 style={{ margin: 0, color: "#ffffff", fontSize: "1.75rem" }}>Twilight Imperium Assistant</h1>
-          <p style={{ margin: "8px 0 0 0", color: "#9aa0a6" }}>Ask about rules, strategy cards, and faction abilities.</p>
+        <div style={{ maxWidth: 900, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h1 style={{ margin: 0, color: "#ffffff", fontSize: "1.75rem" }}>Twilight Imperium Assistant</h1>
+            <p style={{ margin: "8px 0 0 0", color: "#9aa0a6" }}>Ask about rules, strategy cards, and faction abilities.</p>
+          </div>
+          {!user && (
+            <button
+              onClick={() => setShowAuthModal(true)}
+              style={{
+                padding: "10px 20px",
+                background: "#2563eb",
+                color: "#fff",
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontSize: "0.95rem",
+                fontWeight: "bold",
+              }}
+            >
+              Sign In
+            </button>
+          )}
         </div>
       </header>
 
