@@ -19,7 +19,7 @@ type AuthContextType = {
   signUp: (email: string, password: string, fullName?: string) => Promise<{ error: AuthError | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
-  signInWithProvider: (provider: 'google' | 'github') => Promise<void>;
+  signInWithProvider: (provider: 'google') => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,8 +30,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Fetch user profile from database
-  const fetchUserProfile = async (userId: string) => {
+  // Fetch user profile from database, create if it doesn't exist (for OAuth users)
+  const fetchUserProfile = async (userId: string, userEmail?: string, userFullName?: string) => {
     try {
       const { data, error } = await supabase
         .from('user_profiles')
@@ -39,8 +39,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('id', userId)
         .single();
 
-      if (error) throw error;
-      setUserProfile(data);
+      if (error) {
+        // If profile doesn't exist (PGRST116 = no rows returned), create it
+        // This happens for first-time OAuth users
+        if (error.code === 'PGRST116' && userEmail) {
+          console.log('Profile not found, creating new profile for OAuth user');
+          await createUserProfile(userId, userEmail, userFullName);
+          // Fetch the newly created profile
+          const { data: newData } = await supabase
+            .from('user_profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          if (newData) {
+            setUserProfile(newData);
+          }
+        } else {
+          throw error;
+        }
+      } else {
+        setUserProfile(data);
+      }
     } catch (error) {
       console.error('Error fetching user profile:', error);
       setUserProfile(null);
@@ -75,7 +94,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
-        fetchUserProfile(session.user.id);
+        const userEmail = session.user.email || undefined;
+        const userFullName = session.user.user_metadata?.full_name || 
+                           session.user.user_metadata?.name || 
+                           undefined;
+        fetchUserProfile(session.user.id, userEmail, userFullName);
       }
       setLoading(false);
     });
@@ -88,7 +111,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       
       if (session?.user) {
-        await fetchUserProfile(session.user.id);
+        // Get user info for profile creation (important for OAuth users)
+        const userEmail = session.user.email || undefined;
+        const userFullName = session.user.user_metadata?.full_name || 
+                           session.user.user_metadata?.name || 
+                           undefined;
+        await fetchUserProfile(session.user.id, userEmail, userFullName);
       } else {
         setUserProfile(null);
       }
@@ -144,8 +172,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserProfile(null);
   };
 
-  // Sign in with OAuth provider (Google, GitHub, etc.)
-  const signInWithProvider = async (provider: 'google' | 'github') => {
+  // Sign in with Google OAuth
+  const signInWithProvider = async (provider: 'google') => {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
@@ -156,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
     } catch (error) {
-      console.error('Error signing in with provider:', error);
+      console.error('Error signing in with Google:', error);
     }
   };
 
