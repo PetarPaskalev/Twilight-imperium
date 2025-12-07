@@ -5,9 +5,9 @@ import { useAuth } from '../contexts/AuthContext';
 import AuthModal from '../components/AuthModal';
 import UserProfile from '../components/UserProfile';
 
-type Message = { role: "user" | "assistant"; content: string };
+import { API_URL, fetchWithRetry } from '../lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+type Message = { role: "user" | "assistant"; content: string };
 
 export default function Page() {
   const { user, session, loading: authLoading } = useAuth();
@@ -63,7 +63,7 @@ export default function Page() {
       // Get JWT token from session
       const token = session.access_token;
       
-      const res = await fetch(`${API_URL}/chat`, {
+      const res = await fetchWithRetry(`${API_URL}/chat`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -101,8 +101,11 @@ export default function Page() {
     const id = sessionId || window.localStorage.getItem("ti_session_id");
     if (id) {
       try {
-        await fetch(`${API_URL}/clear/${id}`, { method: "POST" });
-      } catch {}
+        await fetchWithRetry(`${API_URL}/clear/${id}`, { method: "POST" });
+      } catch (error) {
+        console.error('Error clearing chat:', error);
+        // Continue clearing local state even if API call fails
+      }
     }
     setMessages([]);
     setSessionId(null);

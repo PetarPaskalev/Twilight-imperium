@@ -8,8 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { API_URL, fetchWithRetry } from '../lib/api';
 
 type UsageData = {
   user_id: string;
@@ -43,7 +42,7 @@ export default function UserProfile() {
       
       if (!token) return;
 
-      const res = await fetch(`${API_URL}/me`, {
+      const res = await fetchWithRetry(`${API_URL}/me`, {
         headers: {
           'Authorization': `Bearer ${token}`,
         },

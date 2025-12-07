@@ -15,8 +15,11 @@ export default function AuthCallback() {
   const router = useRouter();
 
   useEffect(() => {
-    // Handle the OAuth callback
-    const handleCallback = async () => {
+    // Handle the OAuth callback with retry logic
+    const handleCallback = async (retryCount = 0) => {
+      const MAX_RETRIES = 3;
+      const RETRY_DELAY = 1000; // 1 second
+      
       try {
         // Get the code from URL parameters
         const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -28,27 +31,63 @@ export default function AuthCallback() {
           
           if (error) {
             console.error('Error exchanging code for session:', error);
+            
+            // Retry on network errors or temporary failures
+            if (retryCount < MAX_RETRIES && (
+              error.message?.includes('network') || 
+              error.message?.includes('timeout') ||
+              error.message?.includes('fetch')
+            )) {
+              console.log(`Retrying auth callback (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+              setTimeout(() => handleCallback(retryCount + 1), RETRY_DELAY * (retryCount + 1));
+              return;
+            }
+            
             router.push('/?error=auth_failed');
             return;
           }
           
-          // Success - redirect to home
-          router.push('/');
+          // Success - wait a moment for session to be fully established, then redirect
+          setTimeout(() => {
+            router.push('/');
+          }, 500);
         } else {
           // Try to get existing session (for implicit flow or if already authenticated)
           const { data: { session }, error } = await supabase.auth.getSession();
           
           if (error || !session) {
             console.error('No session found after OAuth callback:', error);
+            
+            // Retry on network errors
+            if (retryCount < MAX_RETRIES && (
+              error?.message?.includes('network') || 
+              error?.message?.includes('timeout') ||
+              error?.message?.includes('fetch')
+            )) {
+              console.log(`Retrying session fetch (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+              setTimeout(() => handleCallback(retryCount + 1), RETRY_DELAY * (retryCount + 1));
+              return;
+            }
+            
             router.push('/?error=auth_failed');
             return;
           }
           
-          // Session exists - redirect to home
-          router.push('/');
+          // Session exists - wait a moment, then redirect to home
+          setTimeout(() => {
+            router.push('/');
+          }, 500);
         }
       } catch (error) {
         console.error('Unexpected error during auth callback:', error);
+        
+        // Retry on unexpected errors (might be network issues)
+        if (retryCount < MAX_RETRIES) {
+          console.log(`Retrying after unexpected error (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+          setTimeout(() => handleCallback(retryCount + 1), RETRY_DELAY * (retryCount + 1));
+          return;
+        }
+        
         router.push('/?error=auth_failed');
       }
     };
