@@ -8,7 +8,8 @@
 // Determine if we're in production
 const isProduction = typeof window !== 'undefined' && 
   (window.location.hostname !== 'localhost' && 
-   window.location.hostname !== '127.0.0.1');
+   window.location.hostname !== '127.0.0.1' &&
+   !window.location.hostname.includes('localhost'));
 
 // Production API URL (Render backend)
 const PRODUCTION_API_URL = 'https://twilight-imperium.onrender.com';
@@ -19,8 +20,9 @@ const DEVELOPMENT_API_URL = 'http://localhost:8000';
 // Get API URL with smart fallback
 export const getApiUrl = (): string => {
   // First, check environment variable (set in Vercel)
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL;
+  const envApiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (envApiUrl && envApiUrl.trim() !== '' && !envApiUrl.includes('localhost')) {
+    return envApiUrl.trim();
   }
   
   // Fallback: use production URL if we're not on localhost
@@ -35,10 +37,13 @@ export const getApiUrl = (): string => {
 // Export the API URL constant
 export const API_URL = getApiUrl();
 
-// Log API URL in development for debugging
-if (typeof window !== 'undefined' && !isProduction) {
-  console.log('🔧 API URL:', API_URL);
-  console.log('🔧 Environment variable:', process.env.NEXT_PUBLIC_API_URL || 'not set');
+// Log API URL for debugging (always log in production to help debug)
+if (typeof window !== 'undefined') {
+  console.log('🔧 API Configuration:');
+  console.log('  - Hostname:', window.location.hostname);
+  console.log('  - Is Production:', isProduction);
+  console.log('  - Env Variable:', process.env.NEXT_PUBLIC_API_URL || 'NOT SET');
+  console.log('  - Using API URL:', API_URL);
 }
 
 /**
