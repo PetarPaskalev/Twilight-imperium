@@ -344,6 +344,23 @@ class ChatResponse(BaseModel):
 # Routes
 # -------------------------------
 
+@app.get("/")
+def root() -> Dict[str, Any]:
+    """Root endpoint providing API information."""
+    return {
+        "service": "Twilight Imperium AI Assistant API",
+        "status": "running",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/health",
+            "chat": "/chat (POST)",
+            "me": "/me (GET)",
+            "clear": "/clear/{session_id} (POST)"
+        },
+        "documentation": "See /health for service status"
+    }
+
+
 @app.get("/health")
 def health() -> Dict[str, str]:
     return {"status": "healthy"}
