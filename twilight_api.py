@@ -106,13 +106,39 @@ def _create_supabase_client() -> Optional[Client]:
         print(f"⚠️  Failed to create Supabase client: {e}")
         return None
 
+def _create_supabase_anon_client() -> Optional[Client]:
+    """Create a Supabase client using anon key for JWT token verification.
+
+    This client is used specifically for verifying JWT tokens from the frontend.
+    The anon key client can properly verify tokens issued by Supabase auth.
+    """
+    url = os.getenv("SUPABASE_URL")
+    anon_key = os.getenv("SUPABASE_ANON_KEY")  # anon/public key
+    if not url or not anon_key:
+        print("⚠️  SUPABASE_URL/SUPABASE_ANON_KEY not set - token verification disabled")
+        return None
+    try:
+        return create_client(url, anon_key)
+    except Exception as e:
+        print(f"⚠️  Failed to create Supabase anon client: {e}")
+        return None
+
 supabase_client: Optional[Client] = None
+supabase_anon_client: Optional[Client] = None
 
 def _get_supabase() -> Optional[Client]:
+    """Get Supabase client with service role key (for database operations)."""
     global supabase_client
     if supabase_client is None:
         supabase_client = _create_supabase_client()
     return supabase_client
+
+def _get_supabase_anon() -> Optional[Client]:
+    """Get Supabase client with anon key (for JWT token verification)."""
+    global supabase_anon_client
+    if supabase_anon_client is None:
+        supabase_anon_client = _create_supabase_anon_client()
+    return supabase_anon_client
 
 # Daily message limit for all users
 DAILY_MESSAGE_LIMIT = 20
@@ -126,22 +152,33 @@ async def verify_token(authorization: str = Header(None)) -> Dict[str, Any]:
     """Verify JWT (Supabase) and return minimal user info.
 
     Falls back to a dev user when Supabase is not configured.
+    Uses anon key client for token verification (can verify JWT tokens from frontend).
     """
-    supabase = _get_supabase()
-    if not supabase:
-        return {"user_id": "dev-user", "email": "dev@localhost"}
-
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
 
     token = authorization.replace("Bearer ", "")
+    
+    # Use anon key client for token verification (can verify JWT tokens)
+    supabase_anon = _get_supabase_anon()
+    if not supabase_anon:
+        # Fallback to dev mode if anon key not configured
+        return {"user_id": "dev-user", "email": "dev@localhost"}
+
     try:
-        user_response = supabase.auth.get_user(token)
+        # Use anon key client to verify the JWT token
+        user_response = supabase_anon.auth.get_user(token)
         if not user_response or not getattr(user_response, "user", None):
             raise HTTPException(status_code=401, detail="Invalid token")
 
         user_id = user_response.user.id  # type: ignore[attr-defined]
         user_email = getattr(user_response.user, "email", None)  # type: ignore[attr-defined]
+
+        # Use service role client for database operations (has write permissions)
+        supabase = _get_supabase()
+        if not supabase:
+            # If service role not configured, still return user info from token
+            return {"user_id": user_id, "email": user_email}
 
         profile_response = (
             supabase
@@ -152,8 +189,18 @@ async def verify_token(authorization: str = Header(None)) -> Dict[str, Any]:
             .execute()
         )
         if not getattr(profile_response, "data", None):
-            raise HTTPException(status_code=404, detail="User profile not found")
-
+            # Profile doesn't exist - create it automatically (for OAuth users)
+            try:
+                supabase.table("user_profiles").insert({
+                    "id": user_id,
+                    "email": user_email,
+                    "tier": "free"
+                }).execute()
+            except Exception as create_error:
+                # If creation fails, still return user info (profile might exist but query failed)
+                print(f"⚠️  Warning: Could not create user profile: {create_error}")
+                return {"user_id": user_id, "email": user_email}
+        
         return {"user_id": user_id, "email": user_email}
     except HTTPException:
         raise

@@ -51,7 +51,7 @@ class TwilightImperiumLangGraphBot:
         """
         # Allow environment override and choose a broadly available default
         env_model = os.getenv("MODEL_NAME")
-        self.model_name = env_model or model_name or "gpt-4o-mini"
+        self.model_name = env_model or model_name or "gpt-4o"
         self.temperature = temperature
         
         # Initialize components
