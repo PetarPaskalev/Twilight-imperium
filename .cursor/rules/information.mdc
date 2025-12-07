@@ -4,3 +4,4 @@ alwaysApply: true
 I am building a twilight cahtbot have some simple ui right now and also backend that works with it 
 this si the directory D:\Twilight-imperium
 I am using anaconda this isthe name of the conda env: twilight-imperium
+used uvicorn to run the backend when we are testing the backedn functionality not the twilight-api itslef
