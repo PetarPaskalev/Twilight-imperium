@@ -29,7 +29,11 @@ export default function Page() {
     // Load anonymous message count
     const anonCount = window.localStorage.getItem(ANONYMOUS_COUNT_KEY);
     if (anonCount) {
-      setAnonymousCount(parseInt(anonCount, 10) || 0);
+      const count = parseInt(anonCount, 10) || 0;
+      setAnonymousCount(count);
+      console.log('🔢 Loaded anonymous count:', count);
+    } else {
+      console.log('🔢 No anonymous count found, starting at 0');
     }
     
     // Load any saved messages from previous visits
@@ -66,13 +70,18 @@ export default function Page() {
   async function sendMessage() {
     if (!canSend) return;
     
+    console.log('🚀 sendMessage called - user:', user ? 'logged in' : 'anonymous', 'anonymousCount:', anonymousCount);
+    
     // Check if user is NOT authenticated
     if (!user || !session) {
       // Check anonymous message limit
       if (anonymousCount >= ANONYMOUS_MESSAGE_LIMIT) {
+        console.log('⛔ Anonymous limit reached, showing auth modal');
         setShowAuthModal(true);
         return;
       }
+      
+      console.log('✅ Allowing anonymous message', anonymousCount + 1, 'of', ANONYMOUS_MESSAGE_LIMIT);
       
       // Allow anonymous chat (first 5 messages)
       const userMsg: Message = { role: "user", content: input };
