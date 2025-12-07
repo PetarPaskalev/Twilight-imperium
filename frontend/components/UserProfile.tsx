@@ -3,7 +3,7 @@
 /**
  * UserProfile - Displays user information and usage statistics inline in header
  * 
- * Shows user's email, tier, daily message usage, and logout button.
+ * Shows user's email, daily message usage, and logout button.
  */
 
 import { useEffect, useState } from 'react';
@@ -13,7 +13,6 @@ import { API_URL, fetchWithRetry } from '../lib/api';
 type UsageData = {
   user_id: string;
   email: string;
-  tier: string;
   usage: {
     used: number;
     limit: number;
@@ -81,33 +80,17 @@ export default function UserProfile() {
           >
             {userProfile.email}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* Usage indicator */}
+          {usage && (
             <div
               style={{
-                display: 'inline-block',
-                padding: '0.125rem 0.5rem',
-                borderRadius: '4px',
-                backgroundColor: userProfile.tier === 'paid' ? '#0070f3' : '#555',
-                color: '#fff',
-                fontSize: '0.7rem',
-                fontWeight: 'bold',
-                textTransform: 'uppercase',
+                fontSize: '0.75rem',
+                color: usage.usage.remaining < 5 ? '#ff9944' : '#9aa0a6',
               }}
             >
-              {userProfile.tier}
+              {usage.usage.used}/{usage.usage.limit} msgs today
             </div>
-            {/* Usage indicator */}
-            {usage && (
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  color: usage.usage.remaining < 5 ? '#ff9944' : '#9aa0a6',
-                }}
-              >
-                {usage.usage.used}/{usage.usage.limit} msgs
-              </div>
-            )}
-          </div>
+          )}
         </div>
       </div>
 

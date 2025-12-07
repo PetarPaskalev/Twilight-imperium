@@ -114,11 +114,8 @@ def _get_supabase() -> Optional[Client]:
         supabase_client = _create_supabase_client()
     return supabase_client
 
-# Simple tier limits; can be tuned later
-TIER_LIMITS: Dict[str, int] = {
-    "free": 20,
-    "paid": 500,
-}
+# Daily message limit for all users
+DAILY_MESSAGE_LIMIT = 20
 
 
 # -------------------------------
@@ -132,7 +129,7 @@ async def verify_token(authorization: str = Header(None)) -> Dict[str, Any]:
     """
     supabase = _get_supabase()
     if not supabase:
-        return {"user_id": "dev-user", "email": "dev@localhost", "tier": "free"}
+        return {"user_id": "dev-user", "email": "dev@localhost"}
 
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
@@ -157,8 +154,7 @@ async def verify_token(authorization: str = Header(None)) -> Dict[str, Any]:
         if not getattr(profile_response, "data", None):
             raise HTTPException(status_code=404, detail="User profile not found")
 
-        tier = profile_response.data.get("tier", "free")  # type: ignore[assignment]
-        return {"user_id": user_id, "email": user_email, "tier": tier}
+        return {"user_id": user_id, "email": user_email}
     except HTTPException:
         raise
     except Exception as e:
@@ -175,8 +171,6 @@ async def check_and_increment_usage(user_info: Dict[str, Any]) -> None:
         return
 
     user_id = user_info["user_id"]
-    tier = user_info.get("tier", "free")
-    limit = TIER_LIMITS.get(tier, 20)
 
     today = str(date.today())
     usage_response = (
@@ -190,10 +184,10 @@ async def check_and_increment_usage(user_info: Dict[str, Any]) -> None:
 
     if getattr(usage_response, "data", None):
         current_count = usage_response.data[0]["message_count"]  # type: ignore[index]
-        if current_count >= limit:
+        if current_count >= DAILY_MESSAGE_LIMIT:
             raise HTTPException(
                 status_code=429,
-                detail=f"Daily message limit reached ({limit} messages for {tier} tier)",
+                detail=f"Daily message limit reached ({DAILY_MESSAGE_LIMIT} messages). Come back tomorrow!",
             )
         supabase.table("user_usage").update({"message_count": current_count + 1}).eq("user_id", user_id).eq("date", today).execute()
     else:
@@ -371,8 +365,6 @@ async def get_current_user(user_info: Dict[str, Any] = Depends(verify_token)) ->
     """Return current user info and today's usage summary."""
     supabase = _get_supabase()
     user_id = user_info["user_id"]
-    tier = user_info.get("tier", "free")
-    limit = TIER_LIMITS.get(tier, 20)
 
     used = 0
     if supabase:
@@ -384,40 +376,47 @@ async def get_current_user(user_info: Dict[str, Any] = Depends(verify_token)) ->
     return {
         "user_id": user_id,
         "email": user_info.get("email"),
-        "tier": tier,
-        "usage": {"used": used, "limit": limit, "remaining": max(0, limit - used)},
+        "usage": {"used": used, "limit": DAILY_MESSAGE_LIMIT, "remaining": max(0, DAILY_MESSAGE_LIMIT - used)},
     }
 
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest, user_info: Dict[str, Any] = Depends(verify_token)) -> ChatResponse:
+async def chat(req: ChatRequest, authorization: str = Header(None)) -> ChatResponse:
     try:
-        # Enforce per-user usage limits
-        await check_and_increment_usage(user_info)
-
+        # Check if user is authenticated
+        is_authenticated = authorization and authorization.startswith("Bearer ")
+        
+        if is_authenticated:
+            # Authenticated flow: verify token and enforce limits
+            user_info = await verify_token(authorization)
+            await check_and_increment_usage(user_info)
+        
         chatbot = _get_chatbot()
 
         # Ensure a session id exists
         session_id = req.session_id or str(uuid.uuid4())
 
-        # Load history
-        history = session_store.load(session_id)
+        # Load history (only for authenticated users)
+        history = session_store.load(session_id) if is_authenticated else []
 
         # Get response
         response_text = chatbot.chat(req.message, history)
 
-        # Update and persist history
-        history.append(HumanMessage(content=req.message))
-        history.append(AIMessage(content=response_text))
+        if is_authenticated:
+            # Update and persist history only for authenticated users
+            history.append(HumanMessage(content=req.message))
+            history.append(AIMessage(content=response_text))
 
-        # Keep last 20 messages
-        if len(history) > 20:
-            history = history[-20:]
+            # Keep last 20 messages
+            if len(history) > 20:
+                history = history[-20:]
 
-        session_store.save(session_id, history)
+            session_store.save(session_id, history)
 
         return ChatResponse(response=response_text, session_id=session_id)
 
+    except HTTPException:
+        raise
     except Exception as e:  # pragma: no cover
         raise HTTPException(status_code=500, detail=str(e))
 
