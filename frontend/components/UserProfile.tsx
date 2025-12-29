@@ -15,8 +15,8 @@ type UsageData = {
   email: string;
   usage: {
     used: number;
-    limit: number;
-    remaining: number;
+    limit: number | null;
+    remaining: number | null;
   };
 };
 
@@ -85,10 +85,10 @@ export default function UserProfile() {
             <div
               style={{
                 fontSize: '0.75rem',
-                color: usage.usage.remaining < 5 ? '#ff9944' : '#9aa0a6',
+                color: '#9aa0a6',
               }}
             >
-              {usage.usage.used}/{usage.usage.limit} msgs today
+              {usage.usage.used} msgs today
             </div>
           )}
         </div>

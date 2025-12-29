@@ -140,8 +140,8 @@ def _get_supabase_anon() -> Optional[Client]:
         supabase_anon_client = _create_supabase_anon_client()
     return supabase_anon_client
 
-# Daily message limit for all users
-DAILY_MESSAGE_LIMIT = 20
+# Daily message limit for all users (disabled - no limit)
+# DAILY_MESSAGE_LIMIT = 20
 
 
 # -------------------------------
@@ -209,7 +209,7 @@ async def verify_token(authorization: str = Header(None)) -> Dict[str, Any]:
 
 
 async def check_and_increment_usage(user_info: Dict[str, Any]) -> None:
-    """Ensure the user is within their daily message limit and increment usage.
+    """Track usage (no limit enforced).
 
     Skips when Supabase is not configured (dev mode).
     """
@@ -231,11 +231,7 @@ async def check_and_increment_usage(user_info: Dict[str, Any]) -> None:
 
     if getattr(usage_response, "data", None):
         current_count = usage_response.data[0]["message_count"]  # type: ignore[index]
-        if current_count >= DAILY_MESSAGE_LIMIT:
-            raise HTTPException(
-                status_code=429,
-                detail=f"Daily message limit reached ({DAILY_MESSAGE_LIMIT} messages). Come back tomorrow!",
-            )
+        # No limit check - just increment usage for tracking
         supabase.table("user_usage").update({"message_count": current_count + 1}).eq("user_id", user_id).eq("date", today).execute()
     else:
         supabase.table("user_usage").insert({"user_id": user_id, "date": today, "message_count": 1}).execute()
@@ -423,7 +419,7 @@ async def get_current_user(user_info: Dict[str, Any] = Depends(verify_token)) ->
     return {
         "user_id": user_id,
         "email": user_info.get("email"),
-        "usage": {"used": used, "limit": DAILY_MESSAGE_LIMIT, "remaining": max(0, DAILY_MESSAGE_LIMIT - used)},
+        "usage": {"used": used, "limit": None, "remaining": None},  # No limit enforced
     }
 
 

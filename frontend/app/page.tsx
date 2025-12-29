@@ -16,25 +16,12 @@ export default function Page() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [anonymousCount, setAnonymousCount] = useState(0);
   const endRef = useRef<HTMLDivElement | null>(null);
   const STORAGE_KEY = "ti_messages";
-  const ANONYMOUS_COUNT_KEY = "ti_anonymous_count";
-  const ANONYMOUS_MESSAGE_LIMIT = 5;
 
   useEffect(() => {
     const sid = window.localStorage.getItem("ti_session_id");
     if (sid) setSessionId(sid);
-    
-    // Load anonymous message count
-    const anonCount = window.localStorage.getItem(ANONYMOUS_COUNT_KEY);
-    if (anonCount) {
-      const count = parseInt(anonCount, 10) || 0;
-      setAnonymousCount(count);
-      console.log('🔢 Loaded anonymous count:', count);
-    } else {
-      console.log('🔢 No anonymous count found, starting at 0');
-    }
     
     // Load any saved messages from previous visits
     try {
@@ -45,14 +32,6 @@ export default function Page() {
       }
     } catch {}
   }, []);
-
-  // Reset anonymous count when user signs in
-  useEffect(() => {
-    if (user) {
-      setAnonymousCount(0);
-      window.localStorage.removeItem(ANONYMOUS_COUNT_KEY);
-    }
-  }, [user]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -70,95 +49,31 @@ export default function Page() {
   async function sendMessage() {
     if (!canSend) return;
     
-    console.log('🚀 sendMessage called - user:', user ? 'logged in' : 'anonymous', 'anonymousCount:', anonymousCount);
-    
-    // Check if user is NOT authenticated
-    if (!user || !session) {
-      // Check anonymous message limit
-      if (anonymousCount >= ANONYMOUS_MESSAGE_LIMIT) {
-        console.log('⛔ Anonymous limit reached, showing auth modal');
-        setShowAuthModal(true);
-        return;
-      }
-      
-      console.log('✅ Allowing anonymous message', anonymousCount + 1, 'of', ANONYMOUS_MESSAGE_LIMIT);
-      
-      // Allow anonymous chat (first 5 messages)
-      const userMsg: Message = { role: "user", content: input };
-      setMessages((prev) => [...prev, userMsg]);
-      setInput("");
-      setLoading(true);
-      
-      try {
-        // Call backend WITHOUT authorization header
-        const res = await fetchWithRetry(`${API_URL}/chat`, {
-          method: "POST",
-          headers: { 
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ message: userMsg.content, session_id: sessionId ?? undefined }),
-        });
-        
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        
-        const data = await res.json();
-        if (data.session_id && data.session_id !== sessionId) {
-          setSessionId(data.session_id);
-          window.localStorage.setItem("ti_session_id", data.session_id);
-        }
-        
-        const botMsg: Message = { role: "assistant", content: data.response };
-        setMessages((prev) => [...prev, botMsg]);
-        
-        // Increment anonymous count
-        const newCount = anonymousCount + 1;
-        setAnonymousCount(newCount);
-        window.localStorage.setItem(ANONYMOUS_COUNT_KEY, newCount.toString());
-        
-        // Show warning if approaching limit
-        if (newCount === ANONYMOUS_MESSAGE_LIMIT - 1) {
-          const warningMsg: Message = { 
-            role: "assistant", 
-            content: "⚠️ You have 1 message left. Sign in with Google to continue chatting!" 
-          };
-          setMessages((prev) => [...prev, warningMsg]);
-        }
-      } catch (e: any) {
-        const err: Message = { role: "assistant", content: `Error: ${e.message || e}` };
-        setMessages((prev) => [...prev, err]);
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    // Authenticated flow
     const userMsg: Message = { role: "user", content: input };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
     
     try {
-      // Get JWT token from session
-      const token = session.access_token;
+      // Prepare headers - include auth token if user is authenticated
+      const headers: HeadersInit = { 
+        "Content-Type": "application/json",
+      };
+      
+      // Add authorization header if user is authenticated
+      if (user && session) {
+        headers["Authorization"] = `Bearer ${session.access_token}`;
+      }
       
       const res = await fetchWithRetry(`${API_URL}/chat`, {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify({ message: userMsg.content, session_id: sessionId ?? undefined }),
       });
       
       if (!res.ok) {
         if (res.status === 401) {
           throw new Error("Authentication failed. Please log in again.");
-        }
-        if (res.status === 429) {
-          throw new Error("Daily message limit reached (20 messages). Come back tomorrow!");
         }
         throw new Error(`HTTP ${res.status}`);
       }
@@ -168,6 +83,7 @@ export default function Page() {
         setSessionId(data.session_id);
         window.localStorage.setItem("ti_session_id", data.session_id);
       }
+      
       const botMsg: Message = { role: "assistant", content: data.response };
       setMessages((prev) => [...prev, botMsg]);
     } catch (e: any) {
@@ -192,6 +108,8 @@ export default function Page() {
     setSessionId(null);
     window.localStorage.removeItem("ti_session_id");
     window.localStorage.removeItem(STORAGE_KEY);
+    // Also clear any old anonymous count data if it exists
+    window.localStorage.removeItem("ti_anonymous_count");
   }
 
   return (
@@ -240,21 +158,7 @@ export default function Page() {
         <div style={{ maxWidth: 900, margin: "0 auto" }}>
           {messages.length === 0 && (
             <div style={{ color: "#777", marginTop: 32, fontSize: "0.95rem" }}>
-              {!user && <div style={{ marginBottom: "1rem", color: "#9aa0a6" }}>💬 Try {ANONYMOUS_MESSAGE_LIMIT} messages free - no sign-in required!</div>}
               Try: "What does the Leadership strategy card do?"
-            </div>
-          )}
-          {!user && messages.length > 0 && anonymousCount < ANONYMOUS_MESSAGE_LIMIT && (
-            <div style={{ 
-              padding: "12px 16px", 
-              background: "#1a1f2e", 
-              border: "1px solid #2a3347",
-              borderRadius: "8px",
-              marginBottom: "1rem",
-              color: "#9aa0a6",
-              fontSize: "0.9rem"
-            }}>
-              {anonymousCount}/{ANONYMOUS_MESSAGE_LIMIT} free messages used. {ANONYMOUS_MESSAGE_LIMIT - anonymousCount} remaining before sign-in.
             </div>
           )}
           <div
